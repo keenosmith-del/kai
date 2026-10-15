@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: kai-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: kai
+      POSTGRES_USER: kai
+      POSTGRES_PASSWORD: kai_local_dev_only
+    ports:
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - kai_postgres_data:/var/lib/postgresql/data
+      - ./database/migrations/001_auth.sql:/docker-entrypoint-initdb.d/001_auth.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kai -d kai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  kai_postgres_data:
