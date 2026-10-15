@@ -4,6 +4,7 @@ import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import { pool } from "./db/pool.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { publicationRouter } from "./routes/publications.routes.js";
 
 const app = express();
 const port = Number(process.env.PORT || 5051);
@@ -23,6 +24,7 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.use("/api/auth", authRouter);
+app.use("/api/publications", publicationRouter);
 
 app.use((error, _req, res, _next) => {
   console.error("API error:", error);
