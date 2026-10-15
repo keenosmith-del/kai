@@ -39,6 +39,41 @@ export default function SignIn() {
     return () => clearTimeout(transitionTimer.current);
   }, []);
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("auth_error");
+
+    if (!reason) return;
+
+    const messages = {
+      account_exists:
+        "An account already exists with this email. Sign in first, then connect GitHub from your account.",
+
+      github_verified_email_required:
+        "Please verify your email address on GitHub before continuing.",
+
+      github_cancelled: "GitHub authentication was cancelled.",
+
+      github_invalid_state:
+        "Your GitHub authentication session expired. Please try again.",
+
+      github_in_use:
+        "This GitHub account is already connected to another kai account.",
+
+      login_required: "Please sign in before connecting your GitHub account.",
+
+      github_failed:
+        "We couldn't complete GitHub authentication. Please try again.",
+    };
+
+    setStatus({
+      type: "error",
+      message: messages[reason] || "Authentication could not be completed.",
+    });
+
+    window.history.replaceState({}, "", "/signin");
+  }, []);
+
   function updateField(event) {
     const { name, value } = event.target;
 

@@ -19,7 +19,9 @@ function digestToken(token) {
 export async function issueSession(req, res, userId) {
   const previous = req.cookies?.[COOKIE];
   if (typeof previous === "string" && tokenPattern.test(previous)) {
-    await pool.query("DELETE FROM sessions WHERE token_hash = $1", [digestToken(previous)]);
+    await pool.query("DELETE FROM sessions WHERE token_hash = $1", [
+      digestToken(previous),
+    ]);
   }
 
   const rawToken = randomBytes(32).toString("hex");
@@ -40,9 +42,23 @@ export async function currentUser(req) {
   if (typeof token !== "string" || !tokenPattern.test(token)) return null;
 
   const { rows } = await pool.query(
-    `SELECT u.id, u.name, u.email, u.role, u.email_verified
-     FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.token_hash = $1 AND s.expires_at > NOW()`,
+    `SELECT
+      u.id,
+      u.name,
+      u.email,
+      u.role,
+      u.email_verified,
+      u.onboarding_completed_at,
+      EXISTS (
+        SELECT 1
+        FROM auth_identities ai
+        WHERE ai.user_id = u.id
+          AND ai.provider = 'github'
+      ) AS github_connected
+   FROM sessions s
+   JOIN users u ON u.id = s.user_id
+   WHERE s.token_hash = $1
+     AND s.expires_at > NOW()`,
     [digestToken(token)],
   );
   return rows[0] ?? null;
@@ -51,7 +67,9 @@ export async function currentUser(req) {
 export async function destroySession(req, res) {
   const token = req.cookies?.[COOKIE];
   if (typeof token === "string" && tokenPattern.test(token)) {
-    await pool.query("DELETE FROM sessions WHERE token_hash = $1", [digestToken(token)]);
+    await pool.query("DELETE FROM sessions WHERE token_hash = $1", [
+      digestToken(token),
+    ]);
   }
   res.clearCookie(COOKIE, cookieOptions);
 }

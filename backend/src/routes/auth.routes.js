@@ -3,13 +3,17 @@ import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { rateLimit } from "express-rate-limit";
 import { pool } from "../db/pool.js";
 import { hashPassword, verifyPassword } from "../services/passwords.js";
-import { currentUser, destroySession, issueSession } from "../services/sessions.js";
+import {
+  currentUser,
+  destroySession,
+  issueSession,
+} from "../services/sessions.js";
 
 export const authRouter = Router();
 
 const origin = process.env.APP_ORIGIN || "http://localhost:5175";
-const callbackUrl = process.env.GITHUB_CALLBACK_URL ||
-  `${origin}/api/auth/github/callback`;
+const callbackUrl =
+  process.env.GITHUB_CALLBACK_URL || `${origin}/api/auth/github/callback`;
 
 const production = process.env.NODE_ENV === "production";
 const oauthCookieOptions = {
@@ -67,6 +71,8 @@ function publicUser(user) {
     email: user.email,
     role: user.role,
     email_verified: user.email_verified,
+    onboarding_completed_at: user.onboarding_completed_at ?? null,
+    github_connected: user.github_connected ?? false,
   };
 }
 
@@ -74,10 +80,17 @@ authRouter.post("/register", registerLimit, async (req, res) => {
   const { name, email, password } = req.body ?? {};
   const cleanName = typeof name === "string" ? name.trim() : "";
   const cleanEmail = normalEmail(email);
-  if (cleanName.length < 2 || cleanName.length > 120 || !cleanEmail ||
-      typeof password !== "string" || password.length < 8 ||
-      Buffer.byteLength(password, "utf8") > 256) {
-    return res.status(400).json({ error: "Check your name, email and password (8+ characters)." });
+  if (
+    cleanName.length < 2 ||
+    cleanName.length > 120 ||
+    !cleanEmail ||
+    typeof password !== "string" ||
+    password.length < 8 ||
+    Buffer.byteLength(password, "utf8") > 256
+  ) {
+    return res
+      .status(400)
+      .json({ error: "Check your name, email and password (8+ characters)." });
   }
 
   try {
@@ -92,7 +105,9 @@ authRouter.post("/register", registerLimit, async (req, res) => {
     return res.status(201).json({ user: publicUser(rows[0]) });
   } catch (error) {
     if (error.code === "23505") {
-      return res.status(409).json({ error: "An account with this email already exists." });
+      return res
+        .status(409)
+        .json({ error: "An account with this email already exists." });
     }
     throw error;
   }
@@ -111,8 +126,11 @@ authRouter.post("/login", loginLimit, async (req, res) => {
     [cleanEmail],
   );
   const user = rows[0];
-  if (!user || !user.password_hash ||
-      !(await verifyPassword(password, user.password_hash))) {
+  if (
+    !user ||
+    !user.password_hash ||
+    !(await verifyPassword(password, user.password_hash))
+  ) {
     return res.status(401).json({ error: "Invalid email or password." });
   }
 
@@ -124,17 +142,54 @@ authRouter.get("/me", async (req, res) => {
   return res.json({ user: await currentUser(req) });
 });
 
+authRouter.post("/onboarding/complete", async (req, res) => {
+  const user = await currentUser(req);
+
+  if (!user) {
+    return res.status(401).json({
+      error: "Authentication required.",
+    });
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE users
+     SET
+       onboarding_completed_at =
+         COALESCE(onboarding_completed_at, NOW()),
+       updated_at = NOW()
+     WHERE id = $1
+     RETURNING id`,
+    [user.id],
+  );
+
+  if (!rows.length) {
+    return res.status(404).json({
+      error: "Account not found.",
+    });
+  }
+
+  return res.json({
+    user: await currentUser(req),
+  });
+});
+
 authRouter.post("/logout", async (req, res) => {
   await destroySession(req, res);
   return res.json({ ok: true });
 });
 
 function oauthConfigured() {
-  return Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+  return Boolean(
+    process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET,
+  );
 }
 
 function clearOauthCookies(res) {
-  for (const name of ["kai_oauth_state", "kai_oauth_verifier", "kai_oauth_link"]) {
+  for (const name of [
+    "kai_oauth_state",
+    "kai_oauth_verifier",
+    "kai_oauth_link",
+  ]) {
     res.clearCookie(name, oauthCookieOptions);
   }
 }
@@ -194,7 +249,8 @@ async function githubJson(url, accessToken) {
     },
     signal: AbortSignal.timeout(10000),
   });
-  if (!response.ok) throw new Error(`GitHub API failed: HTTP ${response.status}`);
+  if (!response.ok)
+    throw new Error(`GitHub API failed: HTTP ${response.status}`);
   return response.json();
 }
 
@@ -206,32 +262,46 @@ authRouter.get("/github/callback", async (req, res) => {
   clearOauthCookies(res);
 
   if (req.query.error) return oauthError(res, "github_cancelled");
-  if (typeof code !== "string" || !stringsEqual(state, expectedState) ||
-      typeof verifier !== "string" || verifier.length < 43) {
+  if (
+    typeof code !== "string" ||
+    !stringsEqual(state, expectedState) ||
+    typeof verifier !== "string" ||
+    verifier.length < 43
+  ) {
     return oauthError(res, "github_invalid_state");
   }
 
   try {
-    const tokenResponse = await fetch("https://github.com/login/oauth/access_token", {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify({
-        client_id: process.env.GITHUB_CLIENT_ID,
-        client_secret: process.env.GITHUB_CLIENT_SECRET,
-        code,
-        redirect_uri: callbackUrl,
-        code_verifier: verifier,
-      }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const tokenResponse = await fetch(
+      "https://github.com/login/oauth/access_token",
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          client_id: process.env.GITHUB_CLIENT_ID,
+          client_secret: process.env.GITHUB_CLIENT_SECRET,
+          code,
+          redirect_uri: callbackUrl,
+          code_verifier: verifier,
+        }),
+        signal: AbortSignal.timeout(10000),
+      },
+    );
     const tokenData = await tokenResponse.json();
     if (!tokenResponse.ok || !tokenData.access_token) {
       throw new Error("GitHub token exchange failed");
     }
 
     // A fresh /user request is required for every OAuth sign-in.
-    const profile = await githubJson("https://api.github.com/user", tokenData.access_token);
-    if (!Number.isSafeInteger(profile.id)) throw new Error("Invalid GitHub profile ID");
+    const profile = await githubJson(
+      "https://api.github.com/user",
+      tokenData.access_token,
+    );
+    if (!Number.isSafeInteger(profile.id))
+      throw new Error("Invalid GitHub profile ID");
     const providerId = String(profile.id);
 
     if (isLink) {
@@ -269,7 +339,7 @@ authRouter.get("/github/callback", async (req, res) => {
       );
       const selected = Array.isArray(addresses)
         ? (addresses.find((item) => item.verified && item.primary) ??
-           addresses.find((item) => item.verified))
+          addresses.find((item) => item.verified))
         : null;
       const email = normalEmail(selected?.email);
       if (!email) return oauthError(res, "github_verified_email_required");
@@ -287,7 +357,8 @@ authRouter.get("/github/callback", async (req, res) => {
         }
 
         const name = String(profile.name || profile.login || "GitHub reader")
-          .trim().slice(0, 120);
+          .trim()
+          .slice(0, 120);
         const created = await client.query(
           `INSERT INTO users (name, email, role, email_verified)
            VALUES ($1, $2, 'reader', TRUE) RETURNING id`,
