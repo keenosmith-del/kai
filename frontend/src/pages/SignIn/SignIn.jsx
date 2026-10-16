@@ -370,6 +370,9 @@ export default function SignIn() {
         </div>
       </section>
 
+      <a href="/security" className="signin-recovery">
+        Forgot your password?
+      </a>
       <footer className="signin-footer">
         <span>© {new Date().getFullYear()} kai.</span>
       </footer>

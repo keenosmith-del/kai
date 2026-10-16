@@ -549,3 +549,11 @@
     transition: none;
   }
 }
+.signin-recovery {
+  position: absolute;
+  bottom: 42px;
+  right: 24px;
+  font-size: 11px;
+  color: #77736b;
+  text-decoration: none;
+}

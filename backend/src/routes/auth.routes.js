@@ -122,7 +122,7 @@ authRouter.post("/login", loginLimit, async (req, res) => {
 
   const { rows } = await pool.query(
     `SELECT id, name, email, role, email_verified, password_hash
-     FROM users WHERE LOWER(email) = $1`,
+     FROM users WHERE LOWER(email) = $1 AND NOT suspended`,
     [cleanEmail],
   );
   const user = rows[0];
@@ -327,7 +327,7 @@ authRouter.get("/github/callback", async (req, res) => {
     const existing = await pool.query(
       `SELECT u.id FROM auth_identities ai
        JOIN users u ON u.id = ai.user_id
-       WHERE ai.provider = 'github' AND ai.provider_user_id = $1`,
+       WHERE ai.provider = 'github' AND ai.provider_user_id = $1 AND NOT u.suspended`,
       [providerId],
     );
     let userId = existing.rows[0]?.id;
@@ -348,7 +348,7 @@ authRouter.get("/github/callback", async (req, res) => {
       try {
         await client.query("BEGIN");
         const duplicate = await client.query(
-          "SELECT id FROM users WHERE LOWER(email) = $1",
+          "SELECT id FROM users WHERE LOWER(email) = $1 AND NOT suspended",
           [email],
         );
         if (duplicate.rowCount) {
